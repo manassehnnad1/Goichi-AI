@@ -1,0 +1,11 @@
+node_modules/
+
+# Secrets — never commit these
+.env
+telegram-config.json
+devnet-keypair.json
+anthropic-key.txt
+.txline-session.json
+
+# Captured match data / logs — large, regeneratable, not source
+stream-log-*.jsonl
