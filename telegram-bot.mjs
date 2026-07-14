@@ -35,22 +35,61 @@ function saveStore(store) {
 
 // --- Sending -------------------------------------------------------------
 
+const TELEGRAM_API = `https://api.telegram.org/bot${botToken}`;
+
 async function sendText(chatId, text) {
   await api.post("/sendMessage", { chat_id: chatId, text });
 }
 
+// Native fetch + FormData for multipart uploads — no new dependency needed
+// for something this simple (same reasoning as the .env loader).
+function detectImageType(buffer) {
+  if (buffer[0] === 0xff && buffer[1] === 0xd8) return { ext: "jpg", mime: "image/jpeg" };
+  return { ext: "png", mime: "image/png" };
+}
+
+async function sendPhoto(chatId, imageBuffer, caption) {
+  const { ext, mime } = detectImageType(imageBuffer);
+  const form = new FormData();
+  form.append("chat_id", chatId);
+  form.append("caption", caption);
+  form.append("photo", new Blob([imageBuffer], { type: mime }), `event.${ext}`);
+
+  const res = await fetch(`${TELEGRAM_API}/sendPhoto`, { method: "POST", body: form });
+  if (!res.ok) throw new Error(`sendPhoto failed: ${res.status} ${await res.text()}`);
+}
+
+// Telegram only renders the compact voice-message bubble (waveform, inline
+// play button) for OGG/Opus specifically — other formats get delivered as
+// a plain audio file attachment instead. audioBuffer must already be
+// OGG/Opus by the time it reaches this function (see tts.mjs).
+async function sendVoice(chatId, audioBuffer) {
+  const form = new FormData();
+  form.append("chat_id", chatId);
+  form.append("voice", new Blob([audioBuffer], { type: "audio/ogg" }), "commentary.ogg");
+
+  const res = await fetch(`${TELEGRAM_API}/sendVoice`, { method: "POST", body: form });
+  if (!res.ok) throw new Error(`sendVoice failed: ${res.status} ${await res.text()}`);
+}
+
 // The event pipeline calls this. Fans an alert out to the public channel
-// plus every registered group; voice notes only go where the tier allows.
-export async function broadcast(text, { voiceBuffer = null } = {}) {
+// plus every registered group; image cards go everywhere, voice notes only
+// where the tier allows (channel always counts as the "full" experience).
+export async function broadcast(text, { imageBuffer = null, voiceBuffer = null } = {}) {
   const store = loadStore();
   const targets = [channelId, ...Object.keys(store)];
 
   for (const chatId of targets) {
     try {
-      await sendText(chatId, text);
+      if (imageBuffer) {
+        await sendPhoto(chatId, imageBuffer, text);
+      } else {
+        await sendText(chatId, text);
+      }
+
       const tier = store[chatId]?.tier;
       if (voiceBuffer && (chatId === channelId || tier === "pro")) {
-        // sendVoice wiring goes here once TTS is hooked up (multipart upload).
+        await sendVoice(chatId, voiceBuffer);
       }
     } catch (err) {
       console.error(`[broadcast] Failed to send to ${chatId}:`, err.response?.data?.description || err.message);
@@ -89,6 +128,16 @@ async function handleCommand(update) {
   const msg = update.message;
   if (!msg?.text?.startsWith("/")) return;
   const command = msg.text.split(" ")[0].split("@")[0];
+
+  if (command === "/start") {
+    await sendText(
+      msg.chat.id,
+      "👋 I'm Goichi — a live World Cup pundit. I post commentary the moment something significant happens " +
+        `in a match: goals, red cards, big swings in the odds. Join the channel here: ${channelId}\n\n` +
+        "Add me to your own group to get the same alerts there — free tier is text commentary, " +
+        "Pro adds voice notes and pre/post-match breakdowns."
+    );
+  }
 
   if (command === "/upgrade") {
     // Demo-only stand-in for real payment/token-gating — flips this chat to pro.

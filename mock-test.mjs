@@ -16,6 +16,8 @@ import "./load-env.mjs";
 // Usage: node mock-test.mjs
 
 import { generateCommentary, formatForDelivery } from "./commentary.mjs";
+import { renderEventCard } from "./graphics.mjs";
+import { synthesizeVoice } from "./tts.mjs";
 import { broadcast } from "./telegram-bot.mjs";
 
 const mockEvents = [
@@ -60,7 +62,14 @@ async function main() {
       const text = await generateCommentary(event);
       const message = formatForDelivery(event, text);
       log("commentary", message);
-      await broadcast(message);
+      const imageBuffer = renderEventCard(event);
+      let voiceBuffer = null;
+      try {
+        voiceBuffer = await synthesizeVoice(text);
+      } catch (err) {
+        console.error("TTS failed, sending without voice:", err.message);
+      }
+      await broadcast(message, { imageBuffer, voiceBuffer });
       log("delivery", "Sent to channel.");
     } catch (err) {
       console.error("Failed on this event:", err.message);
