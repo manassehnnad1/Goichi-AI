@@ -10,11 +10,18 @@
 // container Telegram's sendVoice needs for the compact voice-message
 // bubble, no local audio conversion required.
 
-const VOICE = "onyx"; // deep, authoritative — reads well as a commentator base
+const VOICE = "ballad";
 const INSTRUCTIONS =
-  "Deliver this like a live sports commentator reacting to a dramatic, " +
-  "high-stakes moment in a match — energetic, urgent, natural pacing, " +
-  "with emphasis on the key moment. Not robotic, not overly formal.";
+  "You are providing live football commentary for a high-stakes professional match. " +
+  "Speak in polished British sports commentary style. Narrate events as they unfold " +
+  "in real time, maintaining suspense and emotional momentum. Alternate between " +
+  "thoughtful analysis during slower passages and electrifying excitement during " +
+  "counterattacks, goals, near misses, and decisive moments. Use vivid imagery, " +
+  "rhetorical flourishes, and memorable one-liners without becoming theatrical or " +
+  "exaggerated. Keep your delivery dynamic, with controlled pacing, expressive " +
+  "intonation, and authentic crowd-aware energy. Every sentence should sound " +
+  "spontaneous, as if reacting instantly to the action on the pitch.";
+const SPEED = 1.25;
 
 export async function synthesizeVoice(text) {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -36,6 +43,7 @@ export async function synthesizeVoice(text) {
       input: text,
       instructions: INSTRUCTIONS,
       response_format: "opus",
+      speed: SPEED,
     }),
   });
 
