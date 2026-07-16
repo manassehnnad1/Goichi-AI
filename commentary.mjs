@@ -117,3 +117,46 @@ export function formatForDelivery(event, commentaryText) {
   const prefix = { goal: "⚽", red_card: "🟥", yellow_card: "🟨", odds_swing: "📊" }[event.type] ?? "🎙️";
   return `${prefix} ${commentaryText}`;
 }
+
+// --- Pre-match reminders ---------------------------------------------------
+
+const PREMATCH_SYSTEM_PROMPT = `You are Goichi, a live World Cup pundit on Telegram.
+
+Write a short pre-match message. Two tiers, different tone:
+- "today": a casual same-day heads-up, hours before kickoff. Relaxed, like
+  mentioning what's on today. Not urgent.
+- "soon": kickoff is under an hour away. More anticipation, a bit of buildup.
+
+Either way: 1-2 sentences, don't invent storylines/injuries/facts you don't
+have, casual tone not a formal broadcast announcement, no hashtags, no emoji
+in the text itself.`;
+
+export async function generatePreMatchHype(homeTeam, awayTeam, kickoffTime, tier = "soon") {
+  const apiKey = loadApiKey();
+
+  const userPrompt =
+    tier === "today"
+      ? `${homeTeam} vs ${awayTeam} plays today, kicking off at ${kickoffTime}. Write the "today" tier message.`
+      : `${homeTeam} vs ${awayTeam} kicks off at ${kickoffTime}, less than an hour away. Write the "soon" tier message.`;
+
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-5",
+      max_tokens: 150,
+      system: PREMATCH_SYSTEM_PROMPT,
+      messages: [{ role: "user", content: userPrompt }],
+    }),
+  });
+
+  if (!res.ok) throw new Error(`Anthropic API error ${res.status}: ${await res.text()}`);
+  const data = await res.json();
+  const textBlock = data.content.find((b) => b.type === "text");
+  if (!textBlock) throw new Error("No text block in Claude response: " + JSON.stringify(data));
+  return `⏰ ${textBlock.text.trim()}`;
+}

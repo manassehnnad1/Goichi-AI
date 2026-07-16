@@ -37,6 +37,7 @@ function getState(fixtureId) {
       scoreHome: 0,
       scoreAway: 0,
       lastOdds: null,
+      oddsAlertCount: 0,
       recentEvents: [],
       seenActionIds: new Set(), // dedup: unconfirmed + confirmed messages share an Id
       meta: null, // { homeTeam, awayTeam, participant1IsHome }, from the fixtures snapshot
@@ -49,6 +50,8 @@ export function registerFixtureMeta(fixtureId, homeTeam, awayTeam, participant1I
   const state = getState(fixtureId);
   state.meta = { homeTeam, awayTeam, participant1IsHome };
 }
+
+const MAX_ODDS_ALERTS_PER_FIXTURE = 6;
 
 function pushRecent(state, text) {
   state.recentEvents.push(text);
@@ -171,9 +174,10 @@ export function processOddsMessage(raw) {
 
   const newOdds = { home: prices[homeIdx], draw: prices[drawIdx] ?? null, away: prices[awayIdx] };
 
-  if (state.lastOdds) {
+  if (state.lastOdds && state.oddsAlertCount < MAX_ODDS_ALERTS_PER_FIXTURE) {
     const delta = Math.abs(newOdds.home - state.lastOdds.home);
     if (delta >= ODDS_SWING_THRESHOLD) {
+      state.oddsAlertCount++;
       events.push({
         type: "odds_swing",
         minute: null,

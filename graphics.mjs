@@ -5,8 +5,8 @@
 
 import fs from "fs";
 
-const GOAL_IMAGE = fs.readFileSync(new URL("assets/goal1.jpg", import.meta.url));
-const ODDS_IMAGE = fs.readFileSync(new URL("assets/odds.jpg", import.meta.url));
+const GOAL_IMAGE = fs.readFileSync(new URL("assets/goal.jpg", import.meta.url));
+const ODDS_IMAGE = fs.readFileSync(new URL("assets/shift.jpg", import.meta.url));
 
 export function renderEventCard(event) {
   if (event.type === "goal") return GOAL_IMAGE;

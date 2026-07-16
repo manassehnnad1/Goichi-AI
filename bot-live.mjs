@@ -21,6 +21,8 @@ import axios from "axios";
 import { readSseMessages, parseSseData } from "./sse-reader.mjs";
 import { registerFixtureMeta, processScoreMessage, processOddsMessage } from "./event-detector.mjs";
 import { generateCommentary, formatForDelivery } from "./commentary.mjs";
+import { renderEventCard } from "./graphics.mjs";
+import { synthesizeVoice } from "./tts.mjs";
 import { broadcast } from "./telegram-bot.mjs";
 
 const SESSION_PATH = new URL("./.txline-session.json", import.meta.url);
@@ -61,7 +63,14 @@ async function handleEvent(event) {
     const text = await generateCommentary(event);
     const message = formatForDelivery(event, text);
     log("commentary", message);
-    await broadcast(message);
+    const imageBuffer = renderEventCard(event);
+    let voiceBuffer = null;
+    try {
+      voiceBuffer = await synthesizeVoice(text);
+    } catch (err) {
+      console.error("TTS failed, sending without voice:", err.message);
+    }
+    await broadcast(message, { imageBuffer, voiceBuffer });
     log("delivery", "Sent to channel.");
   } catch (err) {
     console.error(`[event] Failed to handle event:`, err.message);
