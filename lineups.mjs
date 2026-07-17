@@ -1,4 +1,4 @@
-// lineups.mjs
+// lineups mjs
 //
 // Fetches fixture lineups and builds a PlayerId -> name lookup. Hedges on
 // the one thing we couldn't confirm from real data: whether goal/card
