@@ -21,7 +21,7 @@ import "./load-env.mjs";
 import fs from "fs";
 import readline from "readline";
 import axios from "axios";
-import { registerFixtureMeta, registerFixtureLineup, processScoreMessage, processOddsMessage, isMatchWinnerMarket } from "./event-detector.mjs";
+import { registerFixtureMeta, registerFixtureLineup, processScoreMessage, processOddsMessage, isMatchWinnerMarket, mergeAlertableDuplicates, ALERTABLE_ACTIONS } from "./event-detector.mjs";
 import { fetchFixtureLineups } from "./lineups.mjs";
 import { generateCommentary, formatForDelivery } from "./commentary.mjs";
 import { renderEventCard } from "./graphics.mjs";
@@ -33,7 +33,8 @@ const REALTIME = args.includes("--realtime");
 const MAX_GAP_MS = Number(args.find((a) => a.startsWith("--maxgap="))?.split("=")[1] ?? 6000);
 const MIN_GAP_MS = 1200;
 const HIGHLIGHTS = args.includes("--highlights") || args.includes("--manual");
-const HIGHLIGHTS_ACTIONS = new Set(["goal", "red_card", "yellow_card"]);
+// HIGHLIGHTS_ACTIONS was a local duplicate of event-detector.mjs's
+// ALERTABLE_ACTIONS — now imported directly instead.
 const FIXED_GAP_ARG = args.find((a) => a.startsWith("--gap="));
 const FIXED_GAP_MS = FIXED_GAP_ARG ? Number(FIXED_GAP_ARG.split("=")[1]) : null;
 const MANUAL = args.includes("--manual");
@@ -97,7 +98,7 @@ async function loadJsonl(url) {
 }
 
 async function handleEvent(event) {
-  log("event", `${event.type} — ${event.team} — ${event.homeTeam} ${event.scoreHome}-${event.scoreAway} ${event.awayTeam}`);
+  log("event", `${event.type} — ${event.player ?? "(no player resolved)"} — ${event.team} — ${event.homeTeam} ${event.scoreHome}-${event.scoreAway} ${event.awayTeam}`);
   try {
     const text = await generateCommentary(event);
     const message = formatForDelivery(event, text);
@@ -116,12 +117,16 @@ async function handleEvent(event) {
   }
 }
 
+// mergeAlertableDuplicates is now imported from event-detector.mjs, shared
+// with historical-replay.mjs rather than duplicated.
+
 async function main() {
   await loadReplayLineups();
 
   const scoresPath = new URL("./stream-log-scores.jsonl", import.meta.url);
   const oddsPath = new URL("./stream-log-odds.jsonl", import.meta.url);
-  const [scoreRecords, rawOddsRecords] = await Promise.all([loadJsonl(scoresPath), loadJsonl(oddsPath)]);
+  const [rawScoreRecords, rawOddsRecords] = await Promise.all([loadJsonl(scoresPath), loadJsonl(oddsPath)]);
+  const scoreRecords = mergeAlertableDuplicates(rawScoreRecords);
 
   // Pre-filter to the 1X2 market only — every other market type (Asian
   // handicap, over/under, all their different lines) never produces an
@@ -153,7 +158,7 @@ async function main() {
     timeline = timeline.filter((r) => {
       if (r.kind !== "score") return false; // odds excluded entirely in highlights mode
       const d = r.data;
-      if (!HIGHLIGHTS_ACTIONS.has(d?.Action) || d?.Confirmed !== true) return false;
+      if (!ALERTABLE_ACTIONS.has(d?.Action) || d?.Confirmed !== true) return false;
       // Goals/cards commonly arrive as two separate Confirmed:true messages
       // for the same Id (one bare, one with extra Data like PlayerId) — keep
       // only the first so we don't waste a gap on a message that fires
@@ -197,7 +202,7 @@ async function main() {
       lastTs = ts;
     }
 
-    const events = record.kind === "score" ? processScoreMessage(record.data) : processOddsMessage(record.data);
+    const events = record.kind === "score" ? processScoreMessage(record.data, { immediate: true }) : processOddsMessage(record.data);
 
     for (const event of events) {
       if (MANUAL) {
