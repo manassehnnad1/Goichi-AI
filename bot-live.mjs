@@ -19,11 +19,13 @@ import "./load-env.mjs";
 import fs from "fs";
 import axios from "axios";
 import { readSseMessages, parseSseData } from "./sse-reader.mjs";
-import { registerFixtureMeta, processScoreMessage, processOddsMessage } from "./event-detector.mjs";
+import { registerFixtureMeta, registerFixtureLineup, processScoreMessage, processOddsMessage } from "./event-detector.mjs";
+import { fetchFixtureLineups } from "./lineups.mjs";
 import { generateCommentary, formatForDelivery } from "./commentary.mjs";
 import { renderEventCard } from "./graphics.mjs";
 import { synthesizeVoice } from "./tts.mjs";
-import { broadcast } from "./telegram-bot.mjs";
+import { broadcast, pollLoop } from "./telegram-bot.mjs";
+import { startFixtureReminderLoop } from "./fixture-reminders.mjs";
 
 const SESSION_PATH = new URL("./.txline-session.json", import.meta.url);
 if (!fs.existsSync(SESSION_PATH)) {
@@ -41,16 +43,32 @@ function log(label, msg) {
 
 // --- Load today's fixtures so team names resolve correctly ---------------
 
+const LINEUP_RELEVANT_WINDOW_MS = 3 * 60 * 60 * 1000; // fetch lineups for fixtures within +/- 3h of kickoff
+
 async function loadFixtureMeta() {
   const httpClient = axios.create({
     baseURL: API_ORIGIN,
     headers: { Authorization: `Bearer ${jwt}`, "X-Api-Token": apiToken },
   });
   const res = await httpClient.get("/api/fixtures/snapshot");
+  const now = Date.now();
+
   for (const f of res.data) {
     const home = f.Participant1IsHome ? f.Participant1 : f.Participant2;
     const away = f.Participant1IsHome ? f.Participant2 : f.Participant1;
     registerFixtureMeta(f.FixtureId, home, away, f.Participant1IsHome);
+
+    // Only bother fetching lineups for fixtures actually relevant right now —
+    // matches days away won't have published rosters yet, and this is one
+    // extra API call per fixture.
+    if (Math.abs(f.StartTime - now) <= LINEUP_RELEVANT_WINDOW_MS) {
+      fetchFixtureLineups(f.FixtureId, httpClient)
+        .then((lookup) => {
+          registerFixtureLineup(f.FixtureId, lookup);
+          log("setup", `Loaded ${lookup.size / 2} player names for fixture ${f.FixtureId}.`); // /2: dual-keyed by fixturePlayerId + normativeId
+        })
+        .catch((err) => console.error(`[setup] Lineup load failed for fixture ${f.FixtureId}:`, err.message));
+    }
   }
   log("setup", `Loaded ${res.data.length} fixtures.`);
 }
@@ -113,6 +131,11 @@ async function main() {
 
   log("setup", "Starting live loop. Ctrl+C to stop.");
 
+  // Non-blocking — does one immediate check, then keeps polling on its own
+  // interval. Started here rather than awaited so it doesn't block the
+  // stream connections below.
+  startFixtureReminderLoop().catch((err) => console.error("[reminders] Failed to start:", err.message));
+
   await Promise.all([
     connectStream("/scores/stream", (raw) => {
       const events = processScoreMessage(raw);
@@ -122,6 +145,7 @@ async function main() {
       const events = processOddsMessage(raw);
       events.forEach(handleEvent);
     }, "odds"),
+    pollLoop(), // handles /start and group-add detection — same process now, not a separate terminal
   ]);
 }
 

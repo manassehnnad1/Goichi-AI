@@ -70,13 +70,17 @@ function buildUserPrompt(event) {
 
   const eventLabel = { goal: "GOAL", red_card: "RED CARD", yellow_card: "YELLOW CARD", odds_swing: "MARKET MOVE" }[event.type] ?? event.type.toUpperCase();
 
+  const eventLine = event.player
+    ? `Event: ${eventLabel} — ${event.player} (${event.team}), opponent: ${event.opponent}.`
+    : `Event: ${eventLabel}, scored/awarded to ${event.team} (opponent: ${event.opponent}).`;
+
   return [
-    `Event: ${eventLabel}, scored/awarded to ${event.team} (opponent: ${event.opponent}).`,
+    eventLine,
     `Score: ${scoreLine}`,
     oddsLine,
     contextLine,
     "",
-    "Write the pundit alert for this moment.",
+    "Write the pundit alert for this moment. If a player name is given, use it naturally.",
   ]
     .filter(Boolean)
     .join("\n");

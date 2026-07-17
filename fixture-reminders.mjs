@@ -130,13 +130,26 @@ async function checkFixtures() {
   }
 }
 
+// Callable from another process (bot-live.mjs) to start the real, ongoing
+// reminder loop — no CLI flags, no --test behavior, just the real thing.
+export async function startFixtureReminderLoop() {
+  log("setup", "Starting fixture reminder loop.");
+  await checkFixtures();
+  setInterval(checkFixtures, POLL_INTERVAL_MS);
+}
+
 async function main() {
   log("setup", TEST_MODE ? `Running once in test mode (${TEST_TIER} tier).` : "Starting fixture reminder loop. Ctrl+C to stop.");
   await checkFixtures();
   if (!TEST_MODE) setInterval(checkFixtures, POLL_INTERVAL_MS);
 }
 
-main().catch((err) => {
-  console.error("Fatal error:", err);
-  process.exit(1);
-});
+// Only auto-runs when this file is executed directly (node fixture-reminders.mjs),
+// not when imported by bot-live.mjs — otherwise importing it would immediately
+// inspect bot-live.mjs's own argv and fire main() unintentionally.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((err) => {
+    console.error("Fatal error:", err);
+    process.exit(1);
+  });
+}

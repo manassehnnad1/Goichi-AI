@@ -16,6 +16,8 @@
 // comment below.
 
 const ODDS_SWING_THRESHOLD = 8; // percentage points of implied win probability
+const MAX_ODDS_ALERTS_PER_FIXTURE = 6;
+const ODDS_ALERT_MIN_GAP_MS = 12 * 60 * 1000; // spreads the 6 alerts across the match instead of letting them cluster
 
 // Official Status Id table, from the spec.
 const STATUS_NAMES = {
@@ -38,9 +40,11 @@ function getState(fixtureId) {
       scoreAway: 0,
       lastOdds: null,
       oddsAlertCount: 0,
+      lastOddsAlertTs: null,
       recentEvents: [],
       seenActionIds: new Set(), // dedup: unconfirmed + confirmed messages share an Id
       meta: null, // { homeTeam, awayTeam, participant1IsHome }, from the fixtures snapshot
+      players: null, // Map<normativeId, "Given Surname">, from player-lookup.mjs (confirmed: PlayerId matches normativeId, not fixturePlayerId)
     });
   }
   return fixtureState.get(fixtureId);
@@ -51,7 +55,10 @@ export function registerFixtureMeta(fixtureId, homeTeam, awayTeam, participant1I
   state.meta = { homeTeam, awayTeam, participant1IsHome };
 }
 
-const MAX_ODDS_ALERTS_PER_FIXTURE = 6;
+export function registerFixtureLineup(fixtureId, playerLookup) {
+  const state = getState(fixtureId);
+  state.players = playerLookup;
+}
 
 function pushRecent(state, text) {
   state.recentEvents.push(text);
@@ -115,12 +122,20 @@ export function processScoreMessage(raw) {
     state.scoreAway = scoreAway;
   }
 
+  // Player resolution — PlayerId comes from the event's own Data field (e.g.
+  // Data:{"GoalType":"Shot","PlayerId":907005}). Falls back to null cleanly
+  // if lineups were never registered for this fixture, or the ID doesn't
+  // resolve — commentary.mjs already handles a missing player name fine.
+  const playerId = raw.Data?.PlayerId;
+  const player = playerId != null ? state.players?.get(playerId) ?? null : null;
+
   events.push({
     type: action, // "goal" | "red_card" | "yellow_card"
     minute,
     period,
     team,
     opponent,
+    player,
     scoreHome,
     scoreAway,
     homeTeam: state.meta?.homeTeam ?? "Home",
@@ -129,7 +144,7 @@ export function processScoreMessage(raw) {
     oddsAfter: null,
     recentEvents: [...state.recentEvents],
   });
-  pushRecent(state, `${action}, ${team}, ${period}`);
+  pushRecent(state, `${action}, ${player ?? team}, ${period}`);
 
   return events;
 }
@@ -150,7 +165,7 @@ function extractOddsFields(raw) {
   return { fixtureId, marketType, priceNames, prices };
 }
 
-function isMatchWinnerMarket(marketType) {
+export function isMatchWinnerMarket(marketType) {
   if (!marketType) return false;
   const m = String(marketType).toLowerCase();
   return m.includes("1x2") || m.includes("match") || m.includes("winner") || m.includes("moneyline");
@@ -173,11 +188,16 @@ export function processOddsMessage(raw) {
   if (homeIdx === -1 || awayIdx === -1) return events;
 
   const newOdds = { home: prices[homeIdx], draw: prices[drawIdx] ?? null, away: prices[awayIdx] };
+  const messageTs = raw.Ts ?? Date.now();
 
-  if (state.lastOdds && state.oddsAlertCount < MAX_ODDS_ALERTS_PER_FIXTURE) {
+  const underCap = state.oddsAlertCount < MAX_ODDS_ALERTS_PER_FIXTURE;
+  const gapOk = state.lastOddsAlertTs === null || messageTs - state.lastOddsAlertTs >= ODDS_ALERT_MIN_GAP_MS;
+
+  if (state.lastOdds && underCap && gapOk) {
     const delta = Math.abs(newOdds.home - state.lastOdds.home);
     if (delta >= ODDS_SWING_THRESHOLD) {
       state.oddsAlertCount++;
+      state.lastOddsAlertTs = messageTs;
       events.push({
         type: "odds_swing",
         minute: null,
