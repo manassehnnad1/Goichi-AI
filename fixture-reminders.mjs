@@ -19,6 +19,7 @@ import fs from "fs";
 import axios from "axios";
 import { generatePreMatchHype } from "./commentary.mjs";
 import { broadcast } from "./telegram-bot.mjs";
+import { recordFixtures } from "./fixture-cache.mjs";
 
 const SESSION_PATH = new URL("./.txline-session.json", import.meta.url);
 const REMINDED_PATH = new URL("./reminded-fixtures.json", import.meta.url);
@@ -27,6 +28,7 @@ const REMINDER_WINDOW_MS = 60 * 60 * 1000; // "soon" tier: kickoff within 1 hour
 const POLL_INTERVAL_MS = 15 * 60 * 1000; // check every 15 minutes
 const API_ORIGIN = "https://txline-dev.txodds.com"; // devnet — per the decision to stay here
 const TIMEZONE = "Africa/Lagos";
+const WORLD_CUP_COMPETITION_ID = 72; // confirmed from every fixture captured this project — excludes the International Friendlies also in the free-tier bundle
 
 const testArg = process.argv.find((a) => a.startsWith("--test"));
 const TEST_MODE = !!testArg;
@@ -83,9 +85,11 @@ async function checkFixtures() {
     headers: { Authorization: `Bearer ${jwt}`, "X-Api-Token": apiToken },
   });
 
-  const res = await httpClient.get("/api/fixtures/snapshot");
+  const res = await httpClient.get("/api/fixtures/snapshot", { params: { competitionId: WORLD_CUP_COMPETITION_ID } });
   const fixtures = res.data;
   const now = Date.now();
+
+  recordFixtures(fixtures); // keeps the local cache current for Replay — see fixture-cache.mjs
 
   log("check", `Scanning ${fixtures.length} fixtures (test mode: ${TEST_MODE ? TEST_TIER : "off"}).`);
 

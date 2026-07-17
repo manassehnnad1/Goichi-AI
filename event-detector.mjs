@@ -29,7 +29,60 @@ const STATUS_NAMES = {
 // Action values worth alerting on. Corners are real and documented too, but
 // happen too often (dozens/match) to alert on individually — tracked as
 // context, not pushed as their own alert.
-const ALERTABLE_ACTIONS = new Set(["goal", "red_card", "yellow_card"]);
+export const ALERTABLE_ACTIONS = new Set(["goal", "red_card", "yellow_card"]);
+
+// Goals/cards arrive as multiple Confirmed:true messages sharing the same
+// Id — the first always lacks Data.PlayerId, a later one adds it (confirmed
+// against real data from three separate sources now: live capture, the
+// snapshot endpoint, and the historical endpoint — all show the identical
+// pattern). Any caller working from a complete, already-fetched dataset
+// (replay.mjs, historical-replay.mjs) should merge duplicates with this
+// before processing, rather than relying on the live debounce mechanism
+// (which needs a registered handler and real elapsed wall-clock time).
+//
+// Expects records shaped as { data: <raw TxLINE object>, ...anything else },
+// e.g. { data: {...}, receivedAt: "..." } — the wrapper's other fields pass
+// through untouched, only .data gets merged/deduped.
+export function mergeAlertableDuplicates(records) {
+  const byKey = new Map();
+  const result = [];
+
+  for (const record of records) {
+    const d = record.data;
+    const isAlertable = ALERTABLE_ACTIONS.has(d?.Action) && d?.Confirmed === true && d?.Id != null && d?.FixtureId != null;
+    if (!isAlertable) {
+      result.push(record);
+      continue;
+    }
+    const key = `${d.FixtureId}:${d.Id}`;
+    if (byKey.has(key)) {
+      const existing = byKey.get(key).data;
+      existing.Data = { ...existing.Data, ...d.Data };
+      if (d.Score) existing.Score = d.Score;
+      continue;
+    }
+    const clone = { ...record, data: { ...d, Data: { ...d.Data } } };
+    byKey.set(key, clone);
+    result.push(clone);
+  }
+  return result;
+}
+
+// Goals/cards reliably arrive as TWO separate Confirmed:true messages for
+// the same Id, a few seconds apart — the first is bare, the second adds
+// Data fields like PlayerId (confirmed from real captured data: ~2.8s gap
+// between them). Firing immediately on the first message means firing on
+// the exact one missing the player's name. 3.5s covers that gap with
+// margin, while still being effectively instant for a live alert.
+const ALERT_DEBOUNCE_MS = 3500;
+
+// Registered once by the caller (bot-live.mjs, replay.mjs, mock-test.mjs)
+// to receive goal/card events once the debounce window closes — these no
+// longer come back through processScoreMessage's return value.
+let onAlertableEvent = null;
+export function setAlertableEventHandler(fn) {
+  onAlertableEvent = fn;
+}
 
 const fixtureState = new Map();
 
@@ -43,6 +96,7 @@ function getState(fixtureId) {
       lastOddsAlertTs: null,
       recentEvents: [],
       seenActionIds: new Set(), // dedup: unconfirmed + confirmed messages share an Id
+      pendingAlerts: new Map(), // Id -> { raw, timer } — goals/cards debounce briefly to catch late-arriving Data (e.g. PlayerId)
       meta: null, // { homeTeam, awayTeam, participant1IsHome }, from the fixtures snapshot
       players: null, // Map<normativeId, "Given Surname">, from player-lookup.mjs (confirmed: PlayerId matches normativeId, not fixturePlayerId)
     });
@@ -74,8 +128,62 @@ function getTeamName(state, participant) {
 
 // --- Scores ----------------------------------------------------------------
 
-// Returns an array of normalized events (usually 0 or 1) for this raw message.
-export function processScoreMessage(raw) {
+function extractScore(state, raw) {
+  let { scoreHome, scoreAway } = state;
+  if (raw.Score) {
+    const p1Goals = raw.Score.Participant1?.Total?.Goals ?? scoreHome;
+    const p2Goals = raw.Score.Participant2?.Total?.Goals ?? scoreAway;
+    const isP1Home = state.meta?.participant1IsHome ?? true;
+    scoreHome = isP1Home ? p1Goals : p2Goals;
+    scoreAway = isP1Home ? p2Goals : p1Goals;
+    state.scoreHome = scoreHome;
+    state.scoreAway = scoreAway;
+  }
+  return { scoreHome, scoreAway };
+}
+
+// Builds the final normalized event from a (possibly merged) raw message.
+// Shared by both the debounced live path and the immediate/pre-merged path.
+function buildAlertableEvent(fixtureId, raw) {
+  const state = getState(fixtureId);
+
+  const team = getTeamName(state, raw.Participant);
+  const opponent = team === state.meta?.homeTeam ? state.meta?.awayTeam : state.meta?.homeTeam;
+  const period = STATUS_NAMES[raw.StatusId] ?? String(raw.StatusId ?? "?");
+  const minute = null; // see the note in the module header on why this is deliberate
+
+  const { scoreHome, scoreAway } = extractScore(state, raw);
+
+  const playerId = raw.Data?.PlayerId;
+  const player = playerId != null ? state.players?.get(playerId) ?? null : null;
+
+  const event = {
+    type: raw.Action, // "goal" | "red_card" | "yellow_card"
+    minute,
+    period,
+    team,
+    opponent,
+    player,
+    scoreHome,
+    scoreAway,
+    homeTeam: state.meta?.homeTeam ?? "Home",
+    awayTeam: state.meta?.awayTeam ?? "Away",
+    oddsBefore: null,
+    oddsAfter: null,
+    recentEvents: [...state.recentEvents],
+  };
+  pushRecent(state, `${raw.Action}, ${player ?? team}, ${period}`);
+  return event;
+}
+
+// Returns an array of normalized events. For LIVE data (default), goals/
+// cards always return empty here and fire later via the registered
+// callback (see setAlertableEventHandler) after a short debounce that
+// catches late-arriving Data like PlayerId. For callers that already have
+// complete, deduped/merged data up front — replay.mjs, working from a fully
+// loaded log rather than a live stream — pass { immediate: true } to fire
+// synchronously with no artificial delay, since there's nothing to wait for.
+export function processScoreMessage(raw, { immediate = false } = {}) {
   const events = [];
   const action = raw.Action;
   const fixtureId = raw.FixtureId;
@@ -89,62 +197,39 @@ export function processScoreMessage(raw) {
   // extra latency waiting for confirmation.
   if (raw.Confirmed === false) return events;
 
-  // Safety-net dedup in case a confirmed message somehow arrives twice.
-  if (raw.Id != null) {
-    if (state.seenActionIds.has(raw.Id)) return events;
-    state.seenActionIds.add(raw.Id);
+  if (immediate) {
+    // Caller guarantees this is already deduped and Data-merged — still
+    // dedupe defensively against seenActionIds in case it isn't.
+    if (raw.Id != null) {
+      if (state.seenActionIds.has(raw.Id)) return events;
+      state.seenActionIds.add(raw.Id);
+    }
+    events.push(buildAlertableEvent(fixtureId, raw));
+    return events;
   }
 
-  const team = getTeamName(state, raw.Participant);
-  const opponent = team === state.meta?.homeTeam ? state.meta?.awayTeam : state.meta?.homeTeam;
-  const period = STATUS_NAMES[raw.StatusId] ?? String(raw.StatusId ?? "?");
+  if (raw.Id == null) return events; // can't dedupe/merge without an Id — shouldn't happen in practice
 
-  // Deliberately NOT computing an exact minute from Clock.Seconds. The spec
-  // describes it as counting down from the period's full duration (2700s
-  // for a 45-min half), but the one real captured value we've seen (2937,
-  // during H2) doesn't cleanly fit that model. Rather than risk stating a
-  // confidently wrong minute in a public channel, this falls back to period
-  // phrasing only ("early in the second half") until enough real Clock
-  // values have been checked against known real match minutes to confirm
-  // the actual semantics.
-  const minute = null;
-
-  // Score comes pre-computed on relevant actions — Participant1/2 mapped to
-  // home/away via participant1IsHome, no diffing needed on our end.
-  let { scoreHome, scoreAway } = state;
-  if (raw.Score) {
-    const p1Goals = raw.Score.Participant1?.Total?.Goals ?? scoreHome;
-    const p2Goals = raw.Score.Participant2?.Total?.Goals ?? scoreAway;
-    const isP1Home = state.meta?.participant1IsHome ?? true;
-    scoreHome = isP1Home ? p1Goals : p2Goals;
-    scoreAway = isP1Home ? p2Goals : p1Goals;
-    state.scoreHome = scoreHome;
-    state.scoreAway = scoreAway;
+  if (state.pendingAlerts.has(raw.Id)) {
+    // A later confirmed message for the same Id — merge its Data/Score in
+    // (this is specifically how PlayerId shows up) rather than firing again
+    // or resetting the timer.
+    const pending = state.pendingAlerts.get(raw.Id);
+    pending.raw.Data = { ...pending.raw.Data, ...raw.Data };
+    if (raw.Score) pending.raw.Score = raw.Score;
+    return events;
   }
 
-  // Player resolution — PlayerId comes from the event's own Data field (e.g.
-  // Data:{"GoalType":"Shot","PlayerId":907005}). Falls back to null cleanly
-  // if lineups were never registered for this fixture, or the ID doesn't
-  // resolve — commentary.mjs already handles a missing player name fine.
-  const playerId = raw.Data?.PlayerId;
-  const player = playerId != null ? state.players?.get(playerId) ?? null : null;
+  if (state.seenActionIds.has(raw.Id)) return events; // already fired and cleaned up
+  state.seenActionIds.add(raw.Id);
 
-  events.push({
-    type: action, // "goal" | "red_card" | "yellow_card"
-    minute,
-    period,
-    team,
-    opponent,
-    player,
-    scoreHome,
-    scoreAway,
-    homeTeam: state.meta?.homeTeam ?? "Home",
-    awayTeam: state.meta?.awayTeam ?? "Away",
-    oddsBefore: null,
-    oddsAfter: null,
-    recentEvents: [...state.recentEvents],
-  });
-  pushRecent(state, `${action}, ${player ?? team}, ${period}`);
+  const pending = { raw: { ...raw } };
+  pending.timer = setTimeout(() => {
+    state.pendingAlerts.delete(raw.Id);
+    const event = buildAlertableEvent(fixtureId, pending.raw);
+    if (onAlertableEvent) onAlertableEvent(event);
+  }, ALERT_DEBOUNCE_MS);
+  state.pendingAlerts.set(raw.Id, pending);
 
   return events;
 }

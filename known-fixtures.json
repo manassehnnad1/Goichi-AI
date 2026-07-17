@@ -1,0 +1,42 @@
+{
+  "18222446": {
+    "fixtureId": 18222446,
+    "home": "Argentina",
+    "away": "Switzerland",
+    "participant1IsHome": true,
+    "startTime": 1783818000000,
+    "competitionId": 72
+  },
+  "18237038": {
+    "fixtureId": 18237038,
+    "home": "France",
+    "away": "Spain",
+    "participant1IsHome": true,
+    "startTime": 1784055600000,
+    "competitionId": 72
+  },
+  "18241006": {
+    "fixtureId": 18241006,
+    "home": "England",
+    "away": "Argentina",
+    "participant1IsHome": true,
+    "startTime": 1784142000000,
+    "competitionId": 72
+  },
+  "18257739": {
+    "fixtureId": 18257739,
+    "home": "Spain",
+    "away": "Argentina",
+    "participant1IsHome": true,
+    "startTime": 1784487600000,
+    "competitionId": 72
+  },
+  "18257865": {
+    "fixtureId": 18257865,
+    "home": "France",
+    "away": "England",
+    "participant1IsHome": true,
+    "startTime": 1784408400000,
+    "competitionId": 72
+  }
+}

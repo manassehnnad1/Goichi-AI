@@ -14,6 +14,7 @@
 
 import fs from "fs";
 import axios from "axios";
+import { listReplayableFixtures, runHistoricalReplay } from "./historical-replay.mjs";
 
 const CONFIG_PATH = new URL("./telegram-config.json", import.meta.url);
 const STORE_PATH = new URL("./subscribed-destinations.json", import.meta.url);
@@ -89,25 +90,30 @@ async function answerCallbackQuery(callbackQueryId, { text = "", showAlert = fal
   });
 }
 
-// The event pipeline calls this. Fans an alert out to the public channel
-// plus every registered group; image cards go everywhere, voice notes only
-// where the tier allows (channel always counts as the "full" experience).
+// Sends one message (text, optionally with an image and/or voice note) to
+// ONE specific chat. Shared by broadcast() (which loops this over multiple
+// targets) and anything that needs to message a single chat directly, like
+// the Replay feature sending to a user's DM.
+export async function sendToChat(chatId, text, { imageBuffer = null, voiceBuffer = null } = {}) {
+  if (imageBuffer) {
+    await sendPhoto(chatId, imageBuffer, text);
+  } else {
+    await sendText(chatId, text);
+  }
+  if (voiceBuffer) {
+    await sendVoice(chatId, voiceBuffer);
+  }
+}
+
 export async function broadcast(text, { imageBuffer = null, voiceBuffer = null } = {}) {
   const store = loadStore();
   const targets = [channelId, ...Object.keys(store)];
 
   for (const chatId of targets) {
     try {
-      if (imageBuffer) {
-        await sendPhoto(chatId, imageBuffer, text);
-      } else {
-        await sendText(chatId, text);
-      }
-
       const tier = store[chatId]?.tier;
-      if (voiceBuffer && (chatId === channelId || tier === "pro")) {
-        await sendVoice(chatId, voiceBuffer);
-      }
+      const allowVoice = voiceBuffer && (chatId === channelId || tier === "pro");
+      await sendToChat(chatId, text, { imageBuffer, voiceBuffer: allowVoice ? voiceBuffer : null });
     } catch (err) {
       console.error(`[broadcast] Failed to send to ${chatId}:`, err.response?.data?.description || err.message);
     }
@@ -157,15 +163,57 @@ const START_KEYBOARD = {
 const HELP_TEXT =
   "Here's what these do:\n\n" +
   "➕ Add me to your Group — brings me into your own Telegram group, so everyone there gets the same live commentary, no need to also follow the channel.\n\n" +
-  "🔁 Replay — a recap of the last big match, delivered like it's happening live. Not live yet — coming soon.\n\n" +
+  "🔁 Replay — pick a recently-finished match and get its goals/cards replayed to you here, like it's happening live.\n\n" +
   "🔔 Subscribe — filter alerts to just the teams you care about, instead of every match. Not live yet — coming soon.";
+
+function formatMatchButtonLabel(match) {
+  const date = new Date(match.startTime).toLocaleDateString("en-GB", { timeZone: "Africa/Lagos", day: "numeric", month: "short" });
+  return `${match.home} vs ${match.away} — ${date}`;
+}
 
 async function handleCallbackQuery(update) {
   const query = update.callback_query;
   const chatId = query.message?.chat?.id;
+  // Always the tapping user's own DM, regardless of where the button was
+  // tapped from (channel, group, or their own chat) — Telegram bots can
+  // only message users who've started a conversation with them already.
+  const userId = query.from.id;
 
-  if (query.data === "replay" || query.data === "subscribe") {
+  if (query.data === "subscribe") {
     await answerCallbackQuery(query.id, { text: "🚧 Coming soon!", showAlert: true });
+    return;
+  }
+
+  if (query.data === "replay") {
+    await answerCallbackQuery(query.id);
+    try {
+      const matches = await listReplayableFixtures();
+      if (matches.length === 0) {
+        await sendText(userId, "No recently-finished matches available to replay right now — check back after the next one wraps up.");
+        return;
+      }
+      const keyboard = {
+        inline_keyboard: matches
+          .slice(0, 10)
+          .map((m) => [{ text: formatMatchButtonLabel(m), callback_data: `replay_select:${m.fixtureId}` }]),
+      };
+      await sendText(userId, "Pick a match to replay:", { reply_markup: keyboard });
+    } catch (err) {
+      console.error("[replay] Failed to list fixtures:", err.response?.data ?? err.message);
+      await sendText(userId, "Couldn't load the match list right now — try again in a moment.");
+    }
+    return;
+  }
+
+  if (query.data?.startsWith("replay_select:")) {
+    const fixtureId = query.data.split(":")[1];
+    await answerCallbackQuery(query.id, { text: "Starting replay in your DM...", showAlert: false });
+    try {
+      await runHistoricalReplay(fixtureId, userId, sendToChat);
+    } catch (err) {
+      console.error("[replay] Replay failed:", err.response?.data ?? err.message);
+      await sendText(userId, "Something went wrong running that replay — try again in a moment.");
+    }
     return;
   }
 

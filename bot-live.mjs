@@ -19,8 +19,9 @@ import "./load-env.mjs";
 import fs from "fs";
 import axios from "axios";
 import { readSseMessages, parseSseData } from "./sse-reader.mjs";
-import { registerFixtureMeta, registerFixtureLineup, processScoreMessage, processOddsMessage } from "./event-detector.mjs";
+import { registerFixtureMeta, registerFixtureLineup, processScoreMessage, processOddsMessage, setAlertableEventHandler } from "./event-detector.mjs";
 import { fetchFixtureLineups } from "./lineups.mjs";
+import { recordFixtures } from "./fixture-cache.mjs";
 import { generateCommentary, formatForDelivery } from "./commentary.mjs";
 import { renderEventCard } from "./graphics.mjs";
 import { synthesizeVoice } from "./tts.mjs";
@@ -44,14 +45,17 @@ function log(label, msg) {
 // --- Load today's fixtures so team names resolve correctly ---------------
 
 const LINEUP_RELEVANT_WINDOW_MS = 3 * 60 * 60 * 1000; // fetch lineups for fixtures within +/- 3h of kickoff
+const WORLD_CUP_COMPETITION_ID = 72; // confirmed from every fixture captured this project — excludes the International Friendlies also in the free-tier bundle
 
 async function loadFixtureMeta() {
   const httpClient = axios.create({
     baseURL: API_ORIGIN,
     headers: { Authorization: `Bearer ${jwt}`, "X-Api-Token": apiToken },
   });
-  const res = await httpClient.get("/api/fixtures/snapshot");
+  const res = await httpClient.get("/api/fixtures/snapshot", { params: { competitionId: WORLD_CUP_COMPETITION_ID } });
   const now = Date.now();
+
+  recordFixtures(res.data); // keeps the local cache current — fixtures/snapshot only shows upcoming matches, so this is how Replay finds ones that have since finished
 
   for (const f of res.data) {
     const home = f.Participant1IsHome ? f.Participant1 : f.Participant2;
@@ -76,7 +80,7 @@ async function loadFixtureMeta() {
 // --- Handle a detected event: generate commentary, send it ---------------
 
 async function handleEvent(event) {
-  log("event", `${event.type} — ${event.team} — ${event.homeTeam} ${event.scoreHome}-${event.scoreAway} ${event.awayTeam}`);
+  log("event", `${event.type} — ${event.player ?? "(no player resolved)"} — ${event.team} — ${event.homeTeam} ${event.scoreHome}-${event.scoreAway} ${event.awayTeam}`);
   try {
     const text = await generateCommentary(event);
     const message = formatForDelivery(event, text);
@@ -130,6 +134,11 @@ async function main() {
   await loadFixtureMeta();
 
   log("setup", "Starting live loop. Ctrl+C to stop.");
+
+  // Goals/cards now fire via this callback after a short debounce (catches
+  // PlayerId arriving in a follow-up confirmed message) instead of through
+  // processScoreMessage's return value.
+  setAlertableEventHandler(handleEvent);
 
   // Non-blocking — does one immediate check, then keeps polling on its own
   // interval. Started here rather than awaited so it doesn't block the

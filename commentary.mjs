@@ -40,7 +40,8 @@ Style:
 - No hashtags, no emoji in the text itself (the delivery layer adds one emoji prefix separately).
 - Never invent a quote and attribute it to a real player — narrate the event, don't put words in anyone's mouth.
 - Don't sign off or self-reference by name ("Goichi says...") — the channel branding already carries that. Occasional first-person flavor ("didn't see that coming") is fine.
-- Vary your openings. Don't start every message the same way.`;
+- Vary your openings. Don't start every message the same way.
+- When a player's name is given in the event, always name them by name — real commentators say who did it, not just which team. Never substitute the team name for a given player name.`;
 
 const PERIOD_PHRASES = {
   NS: "before kickoff", H1: "the first half", HT: "half-time", H2: "the second half",
@@ -74,13 +75,18 @@ function buildUserPrompt(event) {
     ? `Event: ${eventLabel} — ${event.player} (${event.team}), opponent: ${event.opponent}.`
     : `Event: ${eventLabel}, scored/awarded to ${event.team} (opponent: ${event.opponent}).`;
 
+  const playerInstruction = event.player
+    ? `You MUST name ${event.player} explicitly in the commentary — this is a real, named player, not just a team reference. Do not write "${event.team} scores" when you have the actual scorer's name; use the name.`
+    : "";
+
   return [
     eventLine,
     `Score: ${scoreLine}`,
     oddsLine,
     contextLine,
+    playerInstruction,
     "",
-    "Write the pundit alert for this moment. If a player name is given, use it naturally.",
+    "Write the pundit alert for this moment.",
   ]
     .filter(Boolean)
     .join("\n");
