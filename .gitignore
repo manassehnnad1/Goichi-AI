@@ -7,5 +7,19 @@ devnet-keypair.json
 anthropic-key.txt
 .txline-session.json
 
+# Generated runtime state — not source, regenerates automatically
+subscribed-destinations.json
+reminded-fixtures.json
+
 # Captured match data / logs — large, regeneratable, not source
 stream-log-*.jsonl
+
+# Dev/calibration scripts
+
+check-historical.mjs
+check-lineups.mjs
+check-finalised.mjs
+check-replayable.mjs
+analyze-stats.mjs
+diagnose.mjs
+mock-test.mjs

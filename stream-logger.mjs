@@ -1,16 +1,6 @@
 // stream-logger.mjs
 //
-// Run this DURING TONIGHT'S MATCH (Norway v England, 22:00 WAT) to capture
-// real score/odds messages. This is the calibration step — compare a real
-// logged message against the field-name GUESSes in event-detector.mjs and
-// fix any mismatches before trusting it for live detection.
-//
-// Requires the same telegram-config-style credential pattern: reads
-// txline-session.json (written by test-connection.mjs's successful run —
-// it already saves jwt/apiToken/txSig there). If that file's stale, rerun
-// test-connection.mjs once first to refresh it.
-//
-// Usage: node stream-logger.mjs
+
 
 import fs from "fs";
 import { readSseMessages, parseSseData } from "./sse-reader.mjs";
@@ -22,7 +12,7 @@ if (!fs.existsSync(SESSION_PATH)) {
 }
 const { jwt, apiToken } = JSON.parse(fs.readFileSync(SESSION_PATH, "utf8"));
 
-const API_BASE = "https://txline-dev.txodds.com/api"; // devnet, per current phase — swap for mainnet later
+const API_BASE = "https://txline-dev.txodds.com/api"; 
 
 const scoresLog = fs.createWriteStream(new URL("./stream-log-scores.jsonl", import.meta.url), { flags: "a" });
 const oddsLog = fs.createWriteStream(new URL("./stream-log-odds.jsonl", import.meta.url), { flags: "a" });

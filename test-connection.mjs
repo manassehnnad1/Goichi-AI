@@ -6,23 +6,14 @@
 //   3. Gets a guest JWT and activates an API token
 //   4. Fetches the current fixtures snapshot and flags anything that looks live
 //   5. Opens the live scores SSE stream for ~20s and logs whatever comes through
-//
-// Run: npm install && node test-connection.mjs
+
 
 import fs from "fs";
 import { createRequire } from "module";
 import axios from "axios";
 import nacl from "tweetnacl";
 
-// @coral-xyz/anchor, @solana/web3.js, and @solana/spl-token are all
-// CommonJS packages with no "exports" map. `import { X } from ...` and even
-// `import * as ns from ...` both rely on Node statically *guessing* their
-// named exports (via cjs-module-lexer) — a guess that has already proven
-// unreliable across Node versions/OSes for this exact dependency set (it's
-// what broke on the last run). require(), even called from an ESM file via
-// createRequire, uses Node's original CommonJS loader instead: it runs the
-// module for real and hands back its actual module.exports object, so there's
-// no guessing involved and nothing to be wrong about.
+
 const require = createRequire(import.meta.url);
 const anchor = require("@coral-xyz/anchor");
 const solanaWeb3 = require("@solana/web3.js");
@@ -31,7 +22,7 @@ const splToken = require("@solana/spl-token");
 const { ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID, getAssociatedTokenAddressSync, createAssociatedTokenAccountIdempotentInstruction } = splToken;
 
 // ---------------------------------------------------------------------------
-// Config — devnet + free tier. Swap these for the real build (see README).
+// Config — devnet + free tier. 
 // ---------------------------------------------------------------------------
 const RPC_URL = "https://api.devnet.solana.com";
 const API_ORIGIN = "https://txline-dev.txodds.com";
@@ -107,7 +98,7 @@ async function main() {
     TXL_MINT, keypair.publicKey, false, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID
   );
 
-  // The subscribe instruction expects userTokenAccount to already exist —
+  // The subscribe instruction expects userTokenAccount to already exist.
   // it does NOT create it for you (confirmed by an AccountNotInitialized
   // error on a live run). Idempotent = safe to include even if it's already
   // been created by a prior run; it's just a no-op in that case.
@@ -255,7 +246,7 @@ async function main() {
   console.log(`\nReceived ${eventCount} score event(s) in the listening window.`);
   if (eventCount === 0) {
     console.log(
-      "Zero events isn't a failure by itself — score events only fire when something happens " +
+      "Zero events isn't a failure by itself, score events only fire when something happens " +
       "in a live match. Try the odds stream instead (moves far more often), or re-run this " +
       "during your recording window / an active match."
     );
