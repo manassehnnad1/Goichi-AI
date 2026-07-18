@@ -1,4 +1,4 @@
-# Goichi AI — Technical Documentation
+# Goichi  AI — Technical Documentation
 
 ## Core Idea
 
