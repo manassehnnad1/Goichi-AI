@@ -6,14 +6,9 @@ import "./load-env.mjs";
 // (kickoff under an hour away). Each fixture gets each tier at most once.
 //
 // "Today" is computed in Africa/Lagos time, not UTC or the server's local
-// time — matters near midnight, and this is who the channel is for.
+// time. matters near midnight, and this is who the channel is for.
 //
-// Usage:
-//   node fixture-reminders.mjs              — real loop, checks every 15 min
-//   node fixture-reminders.mjs --test        — sends one "today"-tier reminder
-//                                              right now, for the soonest
-//                                              scheduled fixture
-//   node fixture-reminders.mjs --test=soon   — same, but the "soon"-tier message
+
 
 import fs from "fs";
 import axios from "axios";
@@ -28,7 +23,7 @@ const REMINDER_WINDOW_MS = 60 * 60 * 1000; // "soon" tier: kickoff within 1 hour
 const POLL_INTERVAL_MS = 15 * 60 * 1000; // check every 15 minutes
 const API_ORIGIN = "https://txline-dev.txodds.com"; // devnet — per the decision to stay here
 const TIMEZONE = "Africa/Lagos";
-const WORLD_CUP_COMPETITION_ID = 72; // confirmed from every fixture captured this project — excludes the International Friendlies also in the free-tier bundle
+const WORLD_CUP_COMPETITION_ID = 72; 
 
 const testArg = process.argv.find((a) => a.startsWith("--test"));
 const TEST_MODE = !!testArg;
@@ -135,7 +130,6 @@ async function checkFixtures() {
 }
 
 // Callable from another process (bot-live.mjs) to start the real, ongoing
-// reminder loop — no CLI flags, no --test behavior, just the real thing.
 export async function startFixtureReminderLoop() {
   log("setup", "Starting fixture reminder loop.");
   await checkFixtures();
@@ -148,9 +142,7 @@ async function main() {
   if (!TEST_MODE) setInterval(checkFixtures, POLL_INTERVAL_MS);
 }
 
-// Only auto-runs when this file is executed directly (node fixture-reminders.mjs),
-// not when imported by bot-live.mjs — otherwise importing it would immediately
-// inspect bot-live.mjs's own argv and fire main() unintentionally.
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   main().catch((err) => {
     console.error("Fatal error:", err);

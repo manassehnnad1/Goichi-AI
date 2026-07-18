@@ -7,9 +7,7 @@
 // DM), reusing the same detection/commentary/graphics/TTS pipeline as
 // everything else.
 //
-// Scope note: /api/scores/historical is scores-only — no odds equivalent
-// confirmed to exist. This replay is goals/cards only, not the full
-// odds-included experience replay.mjs's default mode has.
+
 
 import fs from "fs";
 import axios from "axios";

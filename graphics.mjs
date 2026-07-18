@@ -1,7 +1,6 @@
 // graphics.mjs
 //
-// Serves the event images: your goal-net photo for goals, your odds-chart
-// photo for market moves. Cards (red/yellow) get no image — plain text only.
+// Serves the event images: goals and odds swings
 
 import fs from "fs";
 

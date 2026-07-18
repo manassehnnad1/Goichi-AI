@@ -4,12 +4,9 @@
 // the one thing we couldn't confirm from real data: whether goal/card
 // events' PlayerId refers to the fixture-scoped fixturePlayerId or the
 // player's global normativeId. Keys the lookup by BOTH, so whichever it
-// turns out to be, resolution works without needing to guess.
+// turns out to be, resolution works.
 //
-// The exact wrapping of the lineup data in the /api/scores/snapshot
-// response wasn't fully visible from what we captured, so extraction
-// searches recursively for "lineups" arrays wherever they appear, rather
-// than assuming one fixed path.
+
 
 function formatPlayerName(preferredName) {
   if (!preferredName) return null;

@@ -1,7 +1,4 @@
-// load-env.mjs — tiny .env loader, no dependency needed for something this
-// simple (and one less package to audit, given the care already put into
-// the dependency list). Import this first in any entry-point script that
-// needs environment-based secrets:
+// load-env.mjs — tiny .env loader
 //
 //   import "./load-env.mjs";
 //

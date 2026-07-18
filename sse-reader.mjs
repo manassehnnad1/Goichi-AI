@@ -1,6 +1,5 @@
 // sse-reader.mjs — shared SSE parsing, ported directly from TxLINE's docs
-// (documentation/examples/streaming-data) rather than hand-rolled, since
-// getting this subtly wrong would mean silently dropping events.
+// (documentation/examples/streaming-data) 
 
 export function parseSseBlock(block) {
   const message = { data: "" };

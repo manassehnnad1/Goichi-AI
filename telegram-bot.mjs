@@ -6,7 +6,7 @@
 // public channel plus every registered group.
 //
 // Uses long-polling (getUpdates), not a webhook — no public server needed,
-// which is the right call for a hackathon timeline. A webhook is a fine
+// a webhook is a fine
 // upgrade later, but adds a deployment/SSL dependency this doesn't need yet.
 //
 // Run standalone to test: node telegram-bot.mjs
@@ -47,8 +47,7 @@ async function sendText(chatId, text, extra = {}) {
   await api.post("/sendMessage", { chat_id: chatId, text, ...extra });
 }
 
-// Native fetch + FormData for multipart uploads — no new dependency needed
-// for something this simple (same reasoning as the .env loader).
+// Native fetch + FormData for multipart uploads 
 function detectImageType(buffer) {
   if (buffer[0] === 0xff && buffer[1] === 0xd8) return { ext: "jpg", mime: "image/jpeg" };
   return { ext: "png", mime: "image/png" };
@@ -79,8 +78,8 @@ async function sendVoice(chatId, audioBuffer) {
 }
 
 // Acknowledges a button tap. Required — without this, the button shows a
-// loading spinner that never resolves. show_alert=true pops a native modal
-// (good for a short "coming soon" notice); false just clears the spinner
+// loading spinner that never resolves. show_alert=true pops a native modal;
+// false just clears the spinner
 // silently (used when we're sending a real message instead, e.g. Help).
 async function answerCallbackQuery(callbackQueryId, { text = "", showAlert = false } = {}) {
   await api.post("/answerCallbackQuery", {

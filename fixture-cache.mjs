@@ -1,12 +1,6 @@
 // fixture-cache.mjs
 //
-// /api/fixtures/snapshot only returns UPCOMING fixtures — confirmed
-// empirically: every fixture it returned had negative age (hadn't kicked
-// off yet), and a fixture we know finished days ago (18241006) wasn't in
-// the response at all. There's no live endpoint to discover past matches
-// from. This is the workaround: every time fixtures/snapshot gets queried
-// anywhere in the project, record the results here — so once a fixture
-// we've seen becomes "finished," it's still discoverable for Replay.
+
 
 import fs from "fs";
 
