@@ -39,16 +39,33 @@ notification.
 ## How to Use
 
 1. **Add the bot** — [t.me/goichiaibot](https://t.me/goichiaibot), tap Start.
+
+   <img width="827" height="1280" alt="image" src="https://github.com/user-attachments/assets/eba5f62b-fcb8-4d36-b507-872b17d09f29" />
+
 2. **`/start`** brings up the main menu: add Goichi to your own group, replay
    a recent match, or get help.
-3. **Just sit in the channel** — no setup needed. Every significant match
+
+  <img width="2205" height="947" alt="image" src="https://github.com/user-attachments/assets/e3f72664-ec5e-46a6-8d2f-41e38a1f6420" />
+
+   
+3. **Just sit in the channel or your group chat** — no setup needed. Every significant match
    moment arrives automatically, as it happens:
 
-   | | |
-   |---|---|
-   | ![Goal alert](docs-screenshots/goal-alert.png) | A goal alert — image, text commentary, and a voice note, all tied to what it did to the score and the market. |
-   | ![Market odds](docs-screenshots/market-odds.jpg) | A market-move alert — fires even without a goal, when the odds themselves are the story. |
-   | ![Pre-match reminder](docs-screenshots/prematch-reminder.png) | A pre-match reminder, sent ahead of kickoff so fans know what's coming up. |
+
+   <img width="1080" height="176" alt="image" src="https://github.com/user-attachments/assets/fb4522ff-3c94-4a14-bb27-6d9940411cfa" />
+
+   
+   A goal alert — image, text commentary, and a voice note, all tied to what it did to the score and the market. 
+
+   
+   <img width="2205" height="1100" alt="image" src="https://github.com/user-attachments/assets/b3d06e25-3722-43e8-9b36-d9dd5c776085" />
+
+   A market-move alert — fires even without a goal, when the odds themselves are the story. 
+
+    <img width="1080" height="244" alt="image" src="https://github.com/user-attachments/assets/ea47c12a-cfed-48c6-a5a0-7b287450f4c3" />
+
+   
+   A pre-match reminder, sent ahead of kickoff so fans know what's coming up. 
 
 ## TxLINE Endpoints Used
 
