@@ -153,7 +153,7 @@ const START_KEYBOARD = {
     [{ text: "➕ Add me to your Group", url: `https://t.me/${BOT_USERNAME}?startgroup=true` }],
     [
       { text: "🔁 Replay", callback_data: "replay" },
-      { text: "🔔 Subscribe", callback_data: "subscribe" },
+      { text: "🔔 Upgrade", callback_data: "upgrade" },
     ],
     [{ text: "❓ Help", callback_data: "help" }],
   ],
@@ -163,7 +163,7 @@ const HELP_TEXT =
   "Here's what these do:\n\n" +
   "➕ Add me to your Group — brings me into your own Telegram group, so everyone there gets the same live commentary, no need to also follow the channel.\n\n" +
   "🔁 Replay — pick a recently-finished match and get its goals/cards replayed to you here, like it's happening live.\n\n" +
-  "🔔 Subscribe — filter alerts to just the teams you care about, instead of every match. Not live yet — coming soon.";
+  "🔔 Upgrade — filter alerts to just the teams you care about, instead of every match. Not live yet — coming soon.";
 
 function formatMatchButtonLabel(match) {
   const date = new Date(match.startTime).toLocaleDateString("en-GB", { timeZone: "Africa/Lagos", day: "numeric", month: "short" });
@@ -178,7 +178,7 @@ async function handleCallbackQuery(update) {
   // only message users who've started a conversation with them already.
   const userId = query.from.id;
 
-  if (query.data === "subscribe") {
+  if (query.data === "upgrade") {
     await answerCallbackQuery(query.id, { text: "🚧 Coming soon!", showAlert: true });
     return;
   }
