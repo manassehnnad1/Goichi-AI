@@ -27,13 +27,13 @@ import { renderEventCard } from "./graphics.mjs";
 import { synthesizeVoice } from "./tts.mjs";
 import { broadcast, pollLoop } from "./telegram-bot.mjs";
 import { startFixtureReminderLoop } from "./fixture-reminders.mjs";
+import { getFreshSession } from "./txline-session.mjs";
 
-const SESSION_PATH = new URL("./.txline-session.json", import.meta.url);
-if (!fs.existsSync(SESSION_PATH)) {
-  console.error("Missing .txline-session.json — run `node test-connection.mjs` once first to authenticate.");
-  process.exit(1);
-}
-const { jwt, apiToken } = JSON.parse(fs.readFileSync(SESSION_PATH, "utf8"));
+// Set at startup by main() — a fresh JWT every time this process starts,
+// rather than trusting a possibly-stale static file. See txline-session.mjs
+// for why this matters for something meant to keep running, not just a
+// one-off script.
+let jwt, apiToken;
 
 const API_ORIGIN = "https://txline-dev.txodds.com"; // devnet for now — see README for the mainnet swap before recording
 const API_BASE = `${API_ORIGIN}/api`;
@@ -131,6 +131,21 @@ async function connectStream(path, onMessage, label) {
 // --- Main ------------------------------------------------------------------
 
 async function main() {
+  ({ jwt, apiToken } = await getFreshSession());
+  log("setup", "Got a fresh TxLINE session.");
+
+  // Refresh periodically, not just once at startup — this process is meant
+  // to run for days/weeks, and the JWT's exact lifetime isn't documented.
+  // An hourly refresh is cheap insurance against it expiring mid-run.
+  setInterval(async () => {
+    try {
+      ({ jwt, apiToken } = await getFreshSession());
+      log("setup", "Refreshed TxLINE session.");
+    } catch (err) {
+      console.error("[setup] Session refresh failed, keeping the old one for now:", err.message);
+    }
+  }, 60 * 60 * 1000);
+
   await loadFixtureMeta();
 
   log("setup", "Starting live loop. Ctrl+C to stop.");

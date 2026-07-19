@@ -7,7 +7,9 @@
 // DM), reusing the same detection/commentary/graphics/TTS pipeline as
 // everything else.
 //
-
+// Scope note: /api/scores/historical is scores-only — no odds equivalent
+// confirmed to exist. This replay is goals/cards only, not the full
+// odds-included experience replay.mjs's default mode has.
 
 import fs from "fs";
 import axios from "axios";
@@ -34,15 +36,8 @@ const API_ORIGIN = "https://txline-dev.txodds.com"; // devnet — per the decisi
 const MAX_GAP_MS = 6000;
 const MIN_GAP_MS = 1200;
 
-function loadSession() {
-  const sessionPath = new URL("./.txline-session.json", import.meta.url);
-  if (!fs.existsSync(sessionPath)) {
-    throw new Error("Missing .txline-session.json — run test-connection.mjs once first.");
-  }
-  return JSON.parse(fs.readFileSync(sessionPath, "utf8"));
-}
-
 import { getCachedFixtures } from "./fixture-cache.mjs";
+import { getFreshSession } from "./txline-session.mjs";
 
 const WORLD_CUP_COMPETITION_ID = 72; // confirmed from every fixture captured this project — the free tier bundle also includes International Friendlies, which this excludes
 
@@ -76,7 +71,7 @@ async function fetchHistoricalRecords(fixtureId, httpClient) {
 }
 
 export async function runHistoricalReplay(fixtureId, targetChatId, sendToChat, { onStatus = () => {} } = {}) {
-  const { jwt, apiToken } = loadSession();
+  const { jwt, apiToken } = await getFreshSession();
   const httpClient = axios.create({
     baseURL: API_ORIGIN,
     timeout: 60000,

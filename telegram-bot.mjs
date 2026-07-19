@@ -6,7 +6,7 @@
 // public channel plus every registered group.
 //
 // Uses long-polling (getUpdates), not a webhook — no public server needed,
-// a webhook is a fine
+// which is the right call for a hackathon timeline. A webhook is a fine
 // upgrade later, but adds a deployment/SSL dependency this doesn't need yet.
 //
 // Run standalone to test: node telegram-bot.mjs
@@ -19,11 +19,23 @@ import { listReplayableFixtures, runHistoricalReplay } from "./historical-replay
 const CONFIG_PATH = new URL("./telegram-config.json", import.meta.url);
 const STORE_PATH = new URL("./subscribed-destinations.json", import.meta.url);
 
-if (!fs.existsSync(CONFIG_PATH)) {
-  console.error("Missing telegram-config.json — copy telegram-config.example.json and fill in botToken + channelId.");
+// Environment variables first (how this gets configured on a host like
+// Render), falling back to the local telegram-config.json file (how it's
+// worked everywhere else in this project) — same pattern as the API keys
+// in commentary.mjs/tts.mjs, so this doesn't break local dev.
+let botToken, channelId;
+if (process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHANNEL_ID) {
+  botToken = process.env.TELEGRAM_BOT_TOKEN;
+  channelId = process.env.TELEGRAM_CHANNEL_ID;
+} else if (fs.existsSync(CONFIG_PATH)) {
+  ({ botToken, channelId } = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8")));
+} else {
+  console.error(
+    "No Telegram credentials found. Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHANNEL_ID as environment " +
+      "variables, or copy telegram-config.example.json to telegram-config.json and fill it in."
+  );
   process.exit(1);
 }
-const { botToken, channelId } = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
 const api = axios.create({ baseURL: `https://api.telegram.org/bot${botToken}`, timeout: 40000 });
 
 // Used to build the "Add to Group" URL button — Telegram's own deep-link
@@ -47,7 +59,8 @@ async function sendText(chatId, text, extra = {}) {
   await api.post("/sendMessage", { chat_id: chatId, text, ...extra });
 }
 
-// Native fetch + FormData for multipart uploads 
+// Native fetch + FormData for multipart uploads — no new dependency needed
+// for something this simple (same reasoning as the .env loader).
 function detectImageType(buffer) {
   if (buffer[0] === 0xff && buffer[1] === 0xd8) return { ext: "jpg", mime: "image/jpeg" };
   return { ext: "png", mime: "image/png" };
@@ -78,8 +91,8 @@ async function sendVoice(chatId, audioBuffer) {
 }
 
 // Acknowledges a button tap. Required — without this, the button shows a
-// loading spinner that never resolves. show_alert=true pops a native modal;
-// false just clears the spinner
+// loading spinner that never resolves. show_alert=true pops a native modal
+// (good for a short "coming soon" notice); false just clears the spinner
 // silently (used when we're sending a real message instead, e.g. Help).
 async function answerCallbackQuery(callbackQueryId, { text = "", showAlert = false } = {}) {
   await api.post("/answerCallbackQuery", {
@@ -153,7 +166,7 @@ const START_KEYBOARD = {
     [{ text: "➕ Add me to your Group", url: `https://t.me/${BOT_USERNAME}?startgroup=true` }],
     [
       { text: "🔁 Replay", callback_data: "replay" },
-      { text: "🔔 Upgrade", callback_data: "upgrade" },
+      { text: "🔔 Subscribe", callback_data: "subscribe" },
     ],
     [{ text: "❓ Help", callback_data: "help" }],
   ],
@@ -163,7 +176,7 @@ const HELP_TEXT =
   "Here's what these do:\n\n" +
   "➕ Add me to your Group — brings me into your own Telegram group, so everyone there gets the same live commentary, no need to also follow the channel.\n\n" +
   "🔁 Replay — pick a recently-finished match and get its goals/cards replayed to you here, like it's happening live.\n\n" +
-  "🔔 Upgrade — filter alerts to just the teams you care about, instead of every match. Not live yet — coming soon.";
+  "🔔 Subscribe — filter alerts to just the teams you care about, instead of every match. Not live yet — coming soon.";
 
 function formatMatchButtonLabel(match) {
   const date = new Date(match.startTime).toLocaleDateString("en-GB", { timeZone: "Africa/Lagos", day: "numeric", month: "short" });
@@ -178,7 +191,7 @@ async function handleCallbackQuery(update) {
   // only message users who've started a conversation with them already.
   const userId = query.from.id;
 
-  if (query.data === "upgrade") {
+  if (query.data === "subscribe") {
     await answerCallbackQuery(query.id, { text: "🚧 Coming soon!", showAlert: true });
     return;
   }

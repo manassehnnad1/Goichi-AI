@@ -1,10 +1,14 @@
 {
-  "name": "txline-connection-test",
+  "name": "goichi-ai",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Smoke test: confirm the TxLINE World Cup free tier API is reachable and returning live data",
+  "description": "Goichi AI — a live World Cup pundit bot for Telegram, built on TxLINE",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
+    "start": "node bot-live.mjs",
     "test": "node test-connection.mjs"
   },
   "dependencies": {
