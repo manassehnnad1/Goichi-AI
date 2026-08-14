@@ -4,3 +4,5 @@
 _AI World Cup Pundit in your pocket_
 
 _powered by TxODDS_
+
+(currently offline)
